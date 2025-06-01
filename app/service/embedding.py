@@ -11,8 +11,6 @@ def get_api_key():
     return os.getenv("COHERE_EMBEDDING_API_KEY")
 
 async def generate_vector_embeddings(input: str):
-
-    # return {"data": input}
     
     key = get_api_key()
     print("Received Input", input, key)
@@ -32,13 +30,9 @@ async def generate_vector_embeddings(input: str):
     }
     response = httpx.post(url, json=data, headers=headers)
     print("Called the API", data, headers)
-    if response.status_code == httpx.codes.OK :
-        print(response.json())
-    else:
+    if response.status_code != httpx.codes.OK :
         print("Error, got status", response.status_code)
     embeddings_data = response.json()
-    # print("Output", embeddings_data, embeddings_data["embeddings"]["float"])
-    return embeddings_data["embeddings"]["float"]
-
+    return embeddings_data["embeddings"]["float"][0]
 
 
