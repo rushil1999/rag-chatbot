@@ -6,7 +6,7 @@ import numpy as np
 
 
 async def get_closest_vector(message: str) -> str:
-  print("User Message received", message)
+  print(f"Service Log: User Input Message received {message}")
   user_vector = await generate_vector_embeddings(message)
   results = vector_collection.aggregate([
     {
@@ -38,6 +38,6 @@ async def get_closest_vector(message: str) -> str:
       max_score = score
       response = i['text']
     
-  print(f"Text with highest cosine similarity {max_score}: ", response)
+  print(f"Service Log: Text with highest cosine similarity: {max_score} is {resposne}")
   return response
 

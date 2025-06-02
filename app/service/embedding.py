@@ -29,9 +29,9 @@ async def generate_vector_embeddings(input: str):
         "embedding_types": ["float"]
     }
     response = httpx.post(url, json=data, headers=headers)
-    print("Called the API", data, headers)
+    print(f"Service Log: Called the API, data: {data}, headers: {headers}")
     if response.status_code != httpx.codes.OK :
-        print("Error, got status", response.status_code)
+        print(f"Service Log: Error, got status: {response.status_code}")
     embeddings_data = response.json()
     return embeddings_data["embeddings"]["float"][0]
 
