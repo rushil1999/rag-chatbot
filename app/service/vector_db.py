@@ -16,7 +16,7 @@ vector_db = vector_store['personal_assisstant_chat']
 vector_collection = vector_db['data_embeddings']
 # Send a ping to confirm a successful connection
 try:
-    client.admin.command('ping')
+    vector_store.admin.command('ping')
     print("Pinged your deployment. You successfully connected to MongoDB!")
 except Exception as e:
     print(e)
