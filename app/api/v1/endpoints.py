@@ -2,7 +2,9 @@ from typing import Union
 from fastapi import APIRouter
 from app.service.embedding import generate_vector_embeddings
 from app.service.vector_search import get_closest_vector
+from app.service.vector_search import insert_data_embeddings_document
 from app.models.vector_models import Vector_Search_Payload
+from app.models.vector_models import Data_Embedding_Payload
 import httpx
 
 router = APIRouter()
@@ -17,6 +19,11 @@ async def generate_embeddings(input: str):
 async def vector_search(vector_search_payload: Vector_Search_Payload):
   message = vector_search_payload.message
   data = await get_closest_vector(vector_search_payload.message)
+  return {"result": data}
+
+@router.post("/data_embedding/")
+async def vector_search(data_embedding_payload: Data_Embedding_Payload):
+  data = await insert_data_embeddings_document(data_embedding_payload)
   return {"result": data}
 
 @router.get("/store/all")

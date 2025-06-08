@@ -1,6 +1,7 @@
 import httpx
 
 from dotenv import load_dotenv
+from fastapi import HTTPException
 import os
 
 # Load environment variables from .env
@@ -11,28 +12,31 @@ def get_api_key():
     return os.getenv("COHERE_EMBEDDING_API_KEY")
 
 async def generate_vector_embeddings(input: str):
-    
-    key = get_api_key()
-    print("Received Input", input, key)
-    url = "https://api.cohere.com/v2/embed"
+    try:
+        key = get_api_key()
+        print("Received Input", input, key)
+        url = "https://api.cohere.com/v2/embed"
 
-    headers = {
-        "Authorization": f"Bearer {key}",
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-    }
+        headers = {
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
 
-    data = {
-        "model": "embed-v4.0",
-        "texts": [input],
-        "input_type": "classification",
-        "embedding_types": ["float"]
-    }
-    response = httpx.post(url, json=data, headers=headers)
-    print(f"Service Log: Called the API, data: {data}, headers: {headers}")
-    if response.status_code != httpx.codes.OK :
-        print(f"Service Log: Error, got status: {response.status_code}")
-    embeddings_data = response.json()
-    return embeddings_data["embeddings"]["float"][0]
+        data = {
+            "model": "embed-v4.0",
+            "texts": [input],
+            "input_type": "classification",
+            "embedding_types": ["float"]
+        }
+        response = httpx.post(url, json=data, headers=headers)
+        print(f"Service Log: Called the API, data: {data}, headers: {headers}")
+        if response.status_code != httpx.codes.OK :
+            print(f"Service Log: Error, got status: {response.status_code}")
+        embeddings_data = response.json()
+        return embeddings_data["embeddings"]["float"][0]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating vector: {str(e)}")
+
 
 
