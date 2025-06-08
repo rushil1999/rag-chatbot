@@ -64,3 +64,17 @@ async def insert_data_embeddings_document(data_embedding_payload: Data_Embedding
     return str(result)
   except Exception as e:
     raise HTTPException(status_code=500, detail=f"Error inserting item: {str(e)}")
+
+
+async def get_all_data_embedding_documents():
+  print(f"Service Log")
+  try: 
+    result = []
+    cursor = vector_collection.find({})
+    for document in cursor:
+      document['_id'] = str(document['_id'])
+      result.append(document)
+    return result
+  except Exception as e:
+    raise HTTPException(status_code=500, detail=f"Error inserting item: {str(e)}")
+

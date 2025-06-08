@@ -37,7 +37,5 @@ class Data_Embedding(BaseModel):
     category: str
     text_embeddings: List[float]
 
-    # class Config:
-    #     allow_population_by_field_name = True
-    #     arbitrary_types_allowed = True
-    #     json_encoders = {ObjectId: str}
+class User_Chat_Payload(BaseModel):
+    user_input: str
