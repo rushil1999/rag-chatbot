@@ -3,6 +3,8 @@ import httpx
 from dotenv import load_dotenv
 from fastapi import HTTPException
 import os
+from app.service.logging import log_info, log_error
+from app.models.response_models import Service_Response_Model
 
 # Load environment variables from .env
 load_dotenv()
@@ -12,9 +14,9 @@ def get_api_key():
     return os.getenv("COHERE_EMBEDDING_API_KEY")
 
 async def generate_vector_embeddings(input: str):
+    log_info("Received Input: {input}", input=input)
     try:
         key = get_api_key()
-        print("Received Input", input, key)
         url = "https://api.cohere.com/v2/embed"
 
         headers = {
@@ -30,12 +32,15 @@ async def generate_vector_embeddings(input: str):
             "embedding_types": ["float"]
         }
         response = httpx.post(url, json=data, headers=headers)
-        print(f"Service Log: Called the API, data: {data}, headers: {headers}")
+        log_info("Called Cohere API to generate vectos, data: {data}", data=data)
         if response.status_code != httpx.codes.OK :
-            print(f"Service Log: Error, got status: {response.status_code}")
+            log_error("Error fetching data from Cohere API, status code: {status_code}", status_code=response.status_code )
         embeddings_data = response.json()
-        return embeddings_data["embeddings"]["float"][0]
+        if embeddings_data["embeddings"] == None or embeddings_data["embeddings"]["float"] == None or len(embeddings_data["embeddings"]["float"]) == 0:
+            return Service_Response_Model(data=[], is_success=False, message="Cannot fetch vector embeddings")
+        return Service_Response_Model(data=embeddings_data["embeddings"]["float"][0], is_success=True)
     except Exception as e:
+        log_error("Error generating vector embedding document payload: {data}, due to {error}",data=data, error=str(e) )
         raise HTTPException(status_code=500, detail=f"Error generating vector: {str(e)}")
 
 

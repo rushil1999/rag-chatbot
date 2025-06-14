@@ -5,12 +5,20 @@ from app.service.embedding import generate_vector_embeddings
 from app.service.vector_db import vector_collection
 from app.models.vector_models import Data_Embedding
 from app.models.vector_models import Data_Embedding_Payload
+from app.service.logging import log_info
+from app.models.response_models import Service_Response_Model
 import numpy as np
+
+cosine_similarity_threshold = 0.75
 
 
 async def get_closest_vector(message: str) -> str:
-  print(f"Service Log: User Input Message received {message}")
-  user_vector = await generate_vector_embeddings(message)
+  log_info("User Input Message received: {message}", message=message)
+  response = await generate_vector_embeddings(message)
+  if not response.is_success:
+    return response
+  
+  user_vector = response.data
   results = vector_collection.aggregate([
     {
         "$vectorSearch": {
@@ -29,30 +37,36 @@ async def get_closest_vector(message: str) -> str:
             '$meta': 'vectorSearchScore'
           }
         }
+    },
+    {
+        "$sort": {
+            "score": -1  # Descending order
+        }
     }
   ])
 
 
   max_score = 0
-  resposne = ""
+  response = []
   for i in results:
     score = i['score']
     if score > max_score:
       max_score = score
-      response = i['text']
+    if score > cosine_similarity_threshold:
+      response.append(i['text'])
     
-  print(f"Service Log: Text with highest cosine similarity: {max_score} is {resposne}")
-  return response
+  log_info("Texts with high cosine similarities are {response}", response=response)
+  if len(response) > 0:
+    return Service_Response_Model(data=response, is_success=True)
+  else: 
+    return Service_Response_Model(data=[], is_success=False, message=f"No data found from vector search, max_score: {max_score}")
 
 
 async def insert_data_embeddings_document(data_embedding_payload: Data_Embedding_Payload):
-  print(f"Service Log: User Data received {data_embedding_payload}")
+  log_info("User Data received: {data_embedding_payload}", data_embedding_payload=data_embedding_payload)
   try: 
     text = data_embedding_payload.text
-    print("Generating for text", text)
     generated_vectors = await generate_vector_embeddings(text)
-
-
     data_embedding = Data_Embedding(
       text=text,
       category=data_embedding_payload.category,
@@ -63,11 +77,12 @@ async def insert_data_embeddings_document(data_embedding_payload: Data_Embedding
     result = vector_collection.insert_one(data_dump).inserted_id
     return str(result)
   except Exception as e:
+    log_error("Error Inserting data embedding document payload: {data_embedding_payload}, due to {error}",data_embedding_payload=data_embedding_payload, error=str(e) )
     raise HTTPException(status_code=500, detail=f"Error inserting item: {str(e)}")
 
 
 async def get_all_data_embedding_documents():
-  print(f"Service Log")
+  log_info("Get All Data embeddings")
   try: 
     result = []
     cursor = vector_collection.find({})

@@ -1,5 +1,5 @@
 from typing import Union
-from fastapi import APIRouter
+from fastapi import APIRouter,HTTPException
 from app.service.embedding import generate_vector_embeddings
 from app.service.vector_search import get_closest_vector
 from app.service.vector_search import get_all_data_embedding_documents
@@ -8,6 +8,8 @@ from app.models.vector_models import Vector_Search_Payload
 from app.models.vector_models import Data_Embedding_Payload
 from app.models.vector_models import User_Chat_Payload
 from app.service.llm import generate_chat_response
+from app.models.response_models import Service_Response_Model
+
 import httpx
 
 router = APIRouter()
@@ -36,8 +38,10 @@ async def get_all_data_embedding_documents_controller():
 
 @router.post("/chat")
 async def generate_chat_response_controller(user_chat_payload: User_Chat_Payload):
-  data = await generate_chat_response(user_chat_payload)
-  return {"result": data}
+  response = await generate_chat_response(user_chat_payload)
+  if not response.is_success:
+    raise HTTPException(status_code=500, detail=response.message)
+  return {"data": response.data}
 
 
 

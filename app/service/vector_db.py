@@ -4,6 +4,7 @@ import os
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 from dotenv import load_dotenv
+from app.service.logging import log_info, log_error
 
 
 # Load environment variables from .env
@@ -17,6 +18,7 @@ vector_collection = vector_db['data_embeddings']
 # Send a ping to confirm a successful connection
 try:
     vector_store.admin.command('ping')
-    print("Pinged your deployment. You successfully connected to MongoDB!")
+    log_info("Pinged your deployment. You successfully connected to MongoDB!")
 except Exception as e:
-    print(e)
+    log_error("Error establishing database connection, {error}", error={str(e)})
+    raise HTTPException(status_code=500, detail=f"Error establishing database connection: {str(e)}")
