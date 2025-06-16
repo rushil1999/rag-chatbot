@@ -2,7 +2,7 @@ from dotenv import load_dotenv
 import os
 from fastapi import HTTPException
 from app.service.embedding import generate_vector_embeddings
-from app.service.vector_db import vector_collection
+from app.service.vector_db import vector_db
 from app.models.vector_models import Data_Embedding
 from app.models.vector_models import Data_Embedding_Payload
 from app.service.logging import log_info
@@ -19,7 +19,8 @@ async def get_closest_vector(message: str) -> str:
     return response
   
   user_vector = response.data
-  results = vector_collection.aggregate([
+  collection = vector_db['data_embeddings']
+  results = collection.aggregate([
     {
         "$vectorSearch": {
             "queryVector": user_vector,
@@ -59,7 +60,8 @@ async def get_closest_vector(message: str) -> str:
   if len(response) > 0:
     return Service_Response_Model(data=response, is_success=True)
   else: 
-    return Service_Response_Model(data=[], is_success=False, message=f"No data found from vector search, max_score: {max_score}")
+    log_info("No text with high cosine similarities found")
+    return Service_Response_Model(data=[], status_code=404, is_success=False, message=f"No data found from vector search, max_score: {max_score}")
 
 
 async def insert_data_embeddings_document(data_embedding_payload: Data_Embedding_Payload):
@@ -74,8 +76,9 @@ async def insert_data_embeddings_document(data_embedding_payload: Data_Embedding
     )
 
     data_dump =  data_embedding.model_dump(by_alias=True)
-    result = vector_collection.insert_one(data_dump).inserted_id
-    return str(result)
+    collection = vector_db['data_embeddings']
+    result = collection.insert_one(data_dump).inserted_id
+    return Service_Response_Model(data=str(result), is_success=False)
   except Exception as e:
     log_error("Error Inserting data embedding document payload: {data_embedding_payload}, due to {error}",data_embedding_payload=data_embedding_payload, error=str(e) )
     raise HTTPException(status_code=500, detail=f"Error inserting item: {str(e)}")
@@ -85,7 +88,8 @@ async def get_all_data_embedding_documents():
   log_info("Get All Data embeddings")
   try: 
     result = []
-    cursor = vector_collection.find({})
+    collection = vector_db['data_embeddings']
+    cursor = collection.find({})
     for document in cursor:
       document['_id'] = str(document['_id'])
       result.append(document)

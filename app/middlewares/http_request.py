@@ -19,6 +19,8 @@ async def log_request(request: Request, call_next):
 
 
 async def authenticate_request(request: Request, call_next):
+  if request.method == "OPTIONS":
+    return await call_next(request)
   required_user_token = f'Bearer {os.getenv("USER_TOKEN")}'
   headers = dict(request.scope['headers'])
   request_token = request.headers.get('authorization')

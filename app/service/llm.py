@@ -26,7 +26,7 @@ async def generate_chat_response(user_chat_payload: User_Chat_Payload):
 
     if len(completion.choices) > 0:
       return Service_Response_Model(data=completion.choices[0].message, is_success=True)
-    return Service_Response_Model(data="", is_success=False, message="No data received from the API")
+    return Service_Response_Model(data="", is_success=False, status_code=404, message="No data received from the API")
   except Exception as e:
     log_error("Error generating chat response with payload: {user_chat_payload}, due to {error}",user_chat_payload=user_chat_payload, error=str(e) )
     raise HTTPException(status_code=500, detail=f"Error getting response from Grok: {str(e)}")

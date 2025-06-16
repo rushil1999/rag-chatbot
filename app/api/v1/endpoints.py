@@ -9,6 +9,9 @@ from app.models.vector_models import Data_Embedding_Payload
 from app.models.vector_models import User_Chat_Payload
 from app.service.llm import generate_chat_response
 from app.models.response_models import Service_Response_Model
+from app.models.chat_models import Message_Payload
+from app.service.chat import store_chat_message
+from app.service.chat import get_chat_by_session_id
 
 import httpx
 
@@ -40,10 +43,25 @@ async def get_all_data_embedding_documents_controller():
 async def generate_chat_response_controller(user_chat_payload: User_Chat_Payload):
   response = await generate_chat_response(user_chat_payload)
   if not response.is_success:
-    raise HTTPException(status_code=500, detail=response.message)
-  return {"data": response.data}
+    if response.status_code == None:
+      response.status_code = 500
+    raise HTTPException(status_code=response.status_code, detail=response.message)
+  return {"result": response.data}
 
 
+@router.post("/store_chat/")
+async def store_chat_message_controller(message_payload: Message_Payload):
+  data = await store_chat_message(message_payload)
+  return {"result": data}
+
+@router.get("/get_chat/{session_id}")
+async def get_chat_by_session_id_controller(session_id: str):
+  response = await get_chat_by_session_id(session_id)
+  if not response.is_success:
+    if response.status_code == None:
+      response.status_code = 500
+    raise HTTPException(status_code=response.status_code, detail=response.message)
+  return {"result": response}
 
 @router.get("/test")
 def test():

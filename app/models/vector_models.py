@@ -1,8 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional
-from bson import ObjectId
-from pydantic_core import core_schema
-from pydantic import GetJsonSchemaHandler
+from typing import List
 
 class Vector_Search_Payload(BaseModel):
     message: str
