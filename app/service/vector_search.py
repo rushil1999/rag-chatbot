@@ -3,16 +3,15 @@ import os
 from fastapi import HTTPException
 from app.service.embedding import generate_vector_embeddings
 from app.service.vector_db import vector_db
-from app.models.vector_models import Data_Embedding
-from app.models.vector_models import Data_Embedding_Payload
-from app.service.logging import log_info
+from app.models.vector_models import Data_Embedding, Data_Embedding_Payload
+from app.service.logging import log_info, log_error
 from app.models.response_models import Service_Response_Model
 import numpy as np
 
 cosine_similarity_threshold = 0.75
 
 
-async def get_closest_vector(message: str) -> str:
+async def get_closest_data_embedding_document(message: str) -> str:
   log_info("User Input Message received: {message}", message=message)
   response = await generate_vector_embeddings(message)
   if not response.is_success:
