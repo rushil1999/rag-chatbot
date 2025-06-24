@@ -13,54 +13,57 @@ cosine_similarity_threshold = 0.75
 
 async def get_closest_data_embedding_document(message: str) -> str:
   log_info("User Input Message received: {message}", message=message)
-  response = await generate_vector_embeddings(message)
-  if not response.is_success:
-    return response
-  
-  user_vector = response.data
-  collection = vector_db['data_embeddings']
-  results = collection.aggregate([
-    {
-        "$vectorSearch": {
-            "queryVector": user_vector,
-            "path": "text_embeddings",
-            "numCandidates": 100,
-            "limit": 5,
-            "index": "vector_search"
-        }
-    },
-    {
-        '$project': {
-          '_id': 1, 
-          'text': 1, 
-          'score': {
-            '$meta': 'vectorSearchScore'
-          }
-        }
-    },
-    {
-        "$sort": {
-            "score": -1  # Descending order
-        }
-    }
-  ])
-
-
-  max_score = 0
-  response = []
-  for i in results:
-    score = i['score']
-    if score > max_score:
-      max_score = score
-    if score > cosine_similarity_threshold:
-      response.append(i['text'])
+  try:
+    response = await generate_vector_embeddings(message)
+    if not response.is_success:
+      return response
     
-  log_info("Texts with high cosine similarities are {response}", response=response)
-  if len(response) > 0:
-    return Service_Response_Model(data=response, is_success=True)
-  else: 
-    log_info("No text with high cosine similarities found")
-    return Service_Response_Model(data=[], status_code=404, is_success=False, message=f"No data found from vector search, max_score: {max_score}")
+    user_vector = response.data
+    collection = vector_db['data_embeddings']
+    results = collection.aggregate([
+      {
+          "$vectorSearch": {
+              "queryVector": user_vector,
+              "path": "text_embeddings",
+              "numCandidates": 100,
+              "limit": 5,
+              "index": "vector_search"
+          }
+      },
+      {
+          '$project': {
+            '_id': 1, 
+            'text': 1, 
+            'score': {
+              '$meta': 'vectorSearchScore'
+            }
+          }
+      },
+      {
+          "$sort": {
+              "score": -1  # Descending order
+          }
+      }
+    ])
+
+
+    max_score = 0
+    response = []
+    for i in results:
+      score = i['score']
+      if score > max_score:
+        max_score = score
+      if score > cosine_similarity_threshold:
+        response.append(i['text'])
+      
+    log_info("Texts with high cosine similarities are {response}", response=response)
+    if len(response) > 0:
+      return Service_Response_Model(data=response, is_success=True)
+    else: 
+      log_info("No text with high cosine similarities found")
+      return Service_Response_Model(data=[], status_code=404, is_success=False, message=f"No data found from vector search, max_score: {max_score}")
+  except Exception as e:
+    raise HTTPException(status_code=500, detail=f"Error getting closest vector: {str(e)}")
 
 
 async def insert_data_embeddings_document(data_embedding_payload: Data_Embedding_Payload):

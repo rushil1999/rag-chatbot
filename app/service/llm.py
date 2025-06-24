@@ -6,20 +6,15 @@ from app.models.response_models import Service_Response_Model
 from app.service.logging import log_info,log_error
 
 
-async def generate_llm_response(user_chat_payload: User_Chat_Payload):
-  log_info("User Data received {user_chat_payload}", user_chat_payload=user_chat_payload)
+async def generate_llm_response(user_input, closest_vectors):
+  log_info("User Data received {user_input}", user_input=user_input)
   try: 
-    user_input = user_chat_payload.user_input
-    response = await get_closest_data_embedding_document(user_input)
-    if not response.is_success:
-      return response
-
     completion = x_api_client.chat.completions.create(
       model="grok-3-mini-fast",
       messages=[
         {
           "role": "system", 
-          "content": f"You are a personal Assistant and answer as 3rd person. Following are the closest vectors received from vector search in order of higher cosing similarity first: {response.data}"},
+          "content": f"You are Rushil's personal Assistant named Vini. Here are the closest vectors received from vector search in order of higher cosing similarity first: {closest_vectors}"},
         {"role": "user", "content": f"{user_input}"},
       ],
     )

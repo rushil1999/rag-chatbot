@@ -6,6 +6,8 @@ from app.models.vector_models import User_Chat_Payload
 from app.service.llm import generate_llm_response
 from fastapi import HTTPException
 from bson import ObjectId
+from app.service.vector_search import get_closest_data_embedding_document
+
 
 
 async def store_chat_message(message_payload: Message_Payload):
@@ -54,13 +56,22 @@ async def chat_response(message_payload: Message_Payload):
     session_id = message_payload.session_id
     user_input = message_payload.message_text
 
-    # Generating response from LLM
-    llm_response = await generate_llm_response(User_Chat_Payload(user_input=user_input)) 
-    if not llm_response.is_success:
-      return llm_response
+    bot_message_payload = Message_Payload(message_text="", session_id=session_id, user_type="bot")
+    # Get Closest Vector
+    response = await get_closest_data_embedding_document(user_input)
+    if not response.is_success:
+      if response.status_code == 404:
+        bot_message_payload = Message_Payload(message_text="I think I don't have enough data to answer this question. Maybe Rushil didn't ingest enough vectors in the search Database. Can you please contact him for this.😅 ", session_id=session_id, user_type="bot")
+      else:
+        return response
+    else:
+      # Generating response from LLM
+      llm_response = await generate_llm_response(user_input, response.data) 
+      if not llm_response.is_success:
+        return llm_response
 
-    # Storing the LLM response
-    bot_message_payload = Message_Payload(message_text=llm_response.data.content, session_id=session_id, user_type="bot")
+      # Storing the LLM response
+      bot_message_payload = Message_Payload(message_text=llm_response.data.content, session_id=session_id, user_type="bot")
     response = await store_chat_message(bot_message_payload)
     if not response.is_success:
       return response
