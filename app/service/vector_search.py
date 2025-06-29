@@ -70,11 +70,13 @@ async def insert_data_embeddings_document(data_embedding_payload: Data_Embedding
   log_info("User Data received: {data_embedding_payload}", data_embedding_payload=data_embedding_payload)
   try: 
     text = data_embedding_payload.text
-    generated_vectors = await generate_vector_embeddings(text)
+    response = await generate_vector_embeddings(text)
+    if not response.is_success:
+      return response
     data_embedding = Data_Embedding(
       text=text,
       category=data_embedding_payload.category,
-      text_embeddings=generated_vectors
+      text_embeddings=response.data
     )
 
     data_dump =  data_embedding.model_dump(by_alias=True)
