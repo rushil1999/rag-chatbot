@@ -9,7 +9,7 @@ app = FastAPI(debug=True)
 # ✅ FIRST: Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # safer than "*"
+    allow_origins=["https://rushil1999.github.io/portfolio/"],  # safer than "*"
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
