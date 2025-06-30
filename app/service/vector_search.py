@@ -2,13 +2,13 @@ from dotenv import load_dotenv
 import os
 from fastapi import HTTPException
 from app.service.embedding import generate_vector_embeddings
-from app.service.vector_db import vector_db
+from app.service.vector_db import vector_db, cosine_similarity_threshold
 from app.models.vector_models import Data_Embedding, Data_Embedding_Payload
 from app.service.logging import log_info, log_error
 from app.models.response_models import Service_Response_Model
 import numpy as np
 
-cosine_similarity_threshold = 0.75
+
 
 
 async def get_closest_data_embedding_document(message: str) -> str:
@@ -56,11 +56,11 @@ async def get_closest_data_embedding_document(message: str) -> str:
       if score > cosine_similarity_threshold:
         response.append(i['text'])
       
-    log_info("Texts with high cosine similarities are {response}", response=response)
+    log_info("Texts with high cosine similarities are {response}. With highest similarity {max_score}", response=response, max_score=max_score)
     if len(response) > 0:
       return Service_Response_Model(data=response, is_success=True)
     else: 
-      log_info("No text with high cosine similarities found")
+      log_info("No text with high cosine similarities found, max score is: {ma_score} and threshold is {threshold}", max_score=max_score, threshold=cosine_similarity_threshold )
       return Service_Response_Model(data=[], status_code=404, is_success=False, message=f"No data found from vector search, max_score: {max_score}")
   except Exception as e:
     raise HTTPException(status_code=500, detail=f"Error getting closest vector: {str(e)}")
