@@ -10,8 +10,7 @@ app = FastAPI(debug=True)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://rushil1999.github.io/portfolio",
-        "https://rushilshah.github.io"
+        "*"
     ],  # safer than "*"
     allow_credentials=True,
     allow_methods=["*"],
