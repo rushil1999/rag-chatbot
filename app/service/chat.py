@@ -39,7 +39,7 @@ async def store_chat_message(message_payload: Message_Payload):
       {"_id": ObjectId(doc_id)},
       {"$push": {"messages": new_message.dict()}}
     )
-    return Service_Response_Model(data=[], is_success=True)
+    return await get_chat_by_session_id(message_payload.session_id)
   except Exception as e:
     log_error("Error Inserting chat data document payload: {message_payload}, due to {error}",message_payload=message_payload, error=str(e) )
     raise HTTPException(status_code=500, detail=f"Error inserting item: {str(e)}")
@@ -99,7 +99,6 @@ async def get_chat_by_session_id(session_id: str):
   except Exception as e:
     log_error("Error fetching chats by session id: {session_id}, due to {error}",session_id=session_id, error=str(e) )
     raise HTTPException(status_code=500, detail=f"Error inserting item: {str(e)}")
-
 
 
 
