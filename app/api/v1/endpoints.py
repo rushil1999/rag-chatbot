@@ -1,12 +1,13 @@
 from typing import Union
 from fastapi import APIRouter,HTTPException
+from fastapi.responses import StreamingResponse
 from app.service.embedding import generate_vector_embeddings
 from app.service.vector_search import get_closest_data_embedding_document, get_all_data_embedding_documents, insert_data_embeddings_document
 from app.models.vector_models import Vector_Search_Payload, Data_Embedding_Payload, User_Chat_Payload
 from app.service.llm import generate_llm_response
 from app.models.response_models import Service_Response_Model
 from app.models.chat_models import Message_Payload
-from app.service.chat import store_chat_message, chat_response, get_chat_by_session_id
+from app.service.chat import store_chat_message, chat_response, chat_response_stream, get_chat_by_session_id
 import httpx
 
 router = APIRouter()
@@ -51,6 +52,19 @@ async def chat_response_controller(message_payload: Message_Payload):
       response.status_code = 500
     raise HTTPException(status_code=response.status_code, detail=response.message)
   return {"result": response.data}
+
+
+@router.post("/chat/stream")
+async def chat_response_stream_controller(message_payload: Message_Payload):
+  return StreamingResponse(
+    chat_response_stream(message_payload),
+    media_type="text/event-stream",
+    headers={
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  )
 
 
 @router.post("/chat/")

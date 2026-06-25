@@ -1,3 +1,4 @@
+import asyncio
 from dotenv import load_dotenv
 import os
 from fastapi import HTTPException
@@ -20,7 +21,7 @@ async def get_closest_data_embedding_document(message: str) -> str:
     
     user_vector = response.data
     collection = vector_db['data_embeddings']
-    results = collection.aggregate([
+    pipeline = [
       {
           "$vectorSearch": {
               "queryVector": user_vector,
@@ -32,8 +33,8 @@ async def get_closest_data_embedding_document(message: str) -> str:
       },
       {
           '$project': {
-            '_id': 1, 
-            'text': 1, 
+            '_id': 1,
+            'text': 1,
             'score': {
               '$meta': 'vectorSearchScore'
             }
@@ -44,7 +45,8 @@ async def get_closest_data_embedding_document(message: str) -> str:
               "score": -1  # Descending order
           }
       }
-    ])
+    ]
+    results = await asyncio.to_thread(lambda: list(collection.aggregate(pipeline)))
 
 
     max_score = 0
@@ -70,7 +72,7 @@ async def insert_data_embeddings_document(data_embedding_payload: Data_Embedding
   log_info("User Data received: {data_embedding_payload}", data_embedding_payload=data_embedding_payload)
   try: 
     text = data_embedding_payload.text
-    response = await generate_vector_embeddings(text)
+    response = await generate_vector_embeddings(text, input_type="search_document")
     if not response.is_success:
       return response
     data_embedding = Data_Embedding(
@@ -81,8 +83,8 @@ async def insert_data_embeddings_document(data_embedding_payload: Data_Embedding
 
     data_dump =  data_embedding.model_dump(by_alias=True)
     collection = vector_db['data_embeddings']
-    result = collection.insert_one(data_dump).inserted_id
-    return Service_Response_Model(data=str(result), is_success=False)
+    result = await asyncio.to_thread(lambda: collection.insert_one(data_dump).inserted_id)
+    return Service_Response_Model(data=str(result), is_success=True)
   except Exception as e:
     log_error("Error Inserting data embedding document payload: {data_embedding_payload}, due to {error}",data_embedding_payload=data_embedding_payload, error=str(e) )
     raise HTTPException(status_code=500, detail=f"Error inserting item: {str(e)}")
@@ -91,13 +93,14 @@ async def insert_data_embeddings_document(data_embedding_payload: Data_Embedding
 async def get_all_data_embedding_documents():
   log_info("Get All Data embeddings")
   try: 
-    result = []
     collection = vector_db['data_embeddings']
-    cursor = collection.find({})
-    for document in cursor:
-      document['_id'] = str(document['_id'])
-      result.append(document)
-    return result
+    def _fetch_all():
+      docs = []
+      for document in collection.find({}):
+        document['_id'] = str(document['_id'])
+        docs.append(document)
+      return docs
+    return await asyncio.to_thread(_fetch_all)
   except Exception as e:
     raise HTTPException(status_code=500, detail=f"Error inserting item: {str(e)}")
 
