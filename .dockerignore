@@ -1,0 +1,11 @@
+# Secrets must never be baked into an image — supply them as runtime env vars.
+.env
+app/.env
+*.env
+
+virtual-env/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+README.md

@@ -4,14 +4,17 @@ from app.service.logging import log_info, log_error
 from app.models.chat_models import Message_Payload, Message, Chat
 from app.service.vector_db import vector_db
 from app.models.response_models import Service_Response_Model
-from app.models.vector_models import User_Chat_Payload
-from app.service.llm import generate_llm_response, generate_llm_response_stream
+from app.service.llm import LLMStreamError, generate_llm_response, generate_llm_response_stream
 from fastapi import HTTPException
 from bson import ObjectId
 from app.service.vector_search import get_closest_data_embedding_document
 
 
-NO_CONTEXT_MESSAGE = "I think I don't have enough data to answer this question. Maybe Rushil didn't ingest enough vectors in the search Database. Can you please contact him for this.😅 "
+NO_CONTEXT_MESSAGE = (
+  "I'm having trouble answering that one right now. Rushil is the best person to ask directly — "
+  "you can reach him at shahrushil1999@gmail.com or on LinkedIn at "
+  "https://linkedin.com/in/rushil1999."
+)
 
 # How many recent messages of a session to feed back into the LLM for continuity.
 RECENT_TURNS = 10
@@ -27,7 +30,13 @@ def _recent_history(store_result):
 
 
 async def store_chat_message(message_payload: Message_Payload):
-  log_info("Received Chat Payload {message_payload}", message_payload=message_payload)
+  # Log the shape, not the content — visitor messages shouldn't land in stdout logs.
+  log_info(
+    "Storing chat message for session {session_id} ({user_type}, {length} chars)",
+    session_id=message_payload.session_id,
+    user_type=message_payload.user_type,
+    length=len(message_payload.message_text),
+  )
   try:
     collection = vector_db['chat_data']
     new_message = Message(message_text=message_payload.message_text, user_type=message_payload.user_type)
@@ -55,12 +64,12 @@ async def store_chat_message(message_payload: Message_Payload):
     ))
     return await get_chat_by_session_id(message_payload.session_id)
   except Exception as e:
-    log_error("Error Inserting chat data document payload: {message_payload}, due to {error}",message_payload=message_payload, error=str(e) )
+    log_error("Error storing chat message for session {session_id}: {error}", session_id=message_payload.session_id, error=str(e))
     raise HTTPException(status_code=500, detail=f"Error inserting item: {str(e)}")
 
 
 async def chat_response(message_payload: Message_Payload):
-  log_info("Received Chat Response Payload {message_payload}", message_payload=message_payload)
+  log_info("Chat turn for session {session_id}", session_id=message_payload.session_id)
   session_id = message_payload.session_id
   try:
     user_input = message_payload.message_text
@@ -129,9 +138,16 @@ async def chat_response_stream(message_payload: Message_Payload):
 
     history = _recent_history(store_result)
     full_text = ""
-    async for delta in generate_llm_response_stream(user_input, context, history):
-      full_text += delta
-      yield f"data: {json.dumps({'token': delta})}\n\n"
+    try:
+      async for delta in generate_llm_response_stream(user_input, context, history):
+        full_text += delta
+        yield f"data: {json.dumps({'token': delta})}\n\n"
+    except LLMStreamError as e:
+      log_error("Grok stream failed for session id: {session_id}, due to {error}", session_id=session_id, error=str(e))
+      # Nothing usable was produced — surface the friendly fallback rather than a raw error.
+      if not full_text:
+        full_text = NO_CONTEXT_MESSAGE
+        yield f"data: {json.dumps({'token': full_text})}\n\n"
 
     # Persist the complete bot message after streaming finishes
     bot_message_payload = Message_Payload(message_text=full_text, session_id=session_id, user_type="bot")
@@ -140,7 +156,8 @@ async def chat_response_stream(message_payload: Message_Payload):
     yield "data: [DONE]\n\n"
   except Exception as e:
     log_error("Error streaming chat response by session id: {session_id}, due to {error}", session_id=session_id, error=str(e))
-    yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    yield f"data: {json.dumps({'error': 'Something went wrong generating that answer.'})}\n\n"
+    yield "data: [DONE]\n\n"
 
 
 async def get_chat_by_session_id(session_id: str):

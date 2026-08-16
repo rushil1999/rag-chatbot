@@ -1,25 +1,30 @@
 # About Rushil
 
 <!--
-This is Vini's always-on background knowledge about Rushil. It is injected into
-every answer, so the bot never draws a blank and stays on-persona even when the
-vector search returns little or nothing.
+Vini's always-on background knowledge about Rushil, injected into every answer so the bot never
+draws a blank and stays on-persona even when vector search returns little.
 
-Keep it concise (a few short sections). For detailed, frequently-updated facts,
-prefer ingesting notes with `python -m scripts.ingest <folder>` instead of
-stuffing everything here.
-
-TODO: Replace the placeholder text below with real details.
+Keep this SHORT — it costs tokens on every single request. Detailed, frequently-updated facts
+belong in ../../content/, ingested with `python -m scripts.ingest ./content`.
 -->
 
 ## Who he is
-Rushil is a software engineer. (TODO: role, current company/focus, location.)
+Rushil Shah is a full-stack software engineer in San Jose, California, with about five years of
+experience. He is currently a Software Development Engineer at Tesla (since February 2024),
+building backend services in Go.
 
 ## Background
-(TODO: education, notable past roles, years of experience.)
+Previously Backend Engineer at Fetch Rewards, and before that Procure Networks, InfluxData
+(Elixir), Shipmnts, and Taasha Technologies. MS in Software Engineering from San Jose State
+University (2023); B.Tech in ICT from Ahmedabad University, India (2021).
 
-## Skills & interests
-(TODO: main technologies, domains, and side interests.)
+## Strengths
+Backend and distributed systems — Go, Python, TypeScript/Node, Kafka, RabbitMQ, MongoDB,
+DynamoDB, Redis, Elasticsearch, AWS. Known for measurable efficiency wins (Elasticsearch write
+errors down 40%, CPU 95%→32%, API consumption down 50%). Now working in AI engineering: RAG,
+vector search, and streaming LLM backends — he built Vini (this chatbot) and Glide.
 
 ## How to reach him
-(TODO: preferred contact / links.)
+Email shahrushil1999@gmail.com or LinkedIn https://linkedin.com/in/rushil1999.
+GitHub https://github.com/rushil1999 · Writing https://medium.com/@rushil1999.dev
+His phone number is never shared here.

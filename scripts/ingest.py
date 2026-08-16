@@ -25,6 +25,7 @@ _ENV = Path(__file__).resolve().parent.parent / "app" / ".env"
 load_dotenv(_ENV)
 
 from app.models.vector_models import Data_Embedding_Payload  # noqa: E402
+from app.service.embedding import generate_vector_embeddings  # noqa: E402
 from app.service.vector_search import (  # noqa: E402
   delete_data_embeddings_by_source,
   insert_data_embeddings_document,
@@ -32,8 +33,11 @@ from app.service.vector_search import (  # noqa: E402
 
 SUPPORTED_SUFFIXES = {".md", ".txt", ".pdf"}
 
+# Chunks shorter than this are headings or stubs, not answers worth retrieving.
+MIN_CHUNK_WORDS = 12
 
-def chunk_text(text: str, target_words: int = 500, overlap_words: int = 50):
+
+def _split_paragraphs(text: str, target_words: int, overlap_words: int):
   """Split text into paragraph-aware chunks of ~target_words with light overlap."""
   paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
   chunks = []
@@ -48,6 +52,44 @@ def chunk_text(text: str, target_words: int = 500, overlap_words: int = 50):
 
   if current:
     chunks.append(" ".join(current))
+  return chunks
+
+
+def chunk_text(text: str, target_words: int = 220, overlap_words: int = 40):
+  """Split markdown into retrievable chunks, one per `##` section where possible.
+
+  Sections are the natural retrieval unit here — a section answers one question ("what was
+  Autosweep?"). Splitting purely on word count would instead merge unrelated sections into one
+  embedding, blurring what each vector means.
+
+  Every chunk is prefixed with the document's `#` title, because chunks are retrieved without
+  their filename: a chunk about "Autosweep" is useless if it doesn't also say "Tesla".
+  """
+  lines = text.split("\n")
+
+  title = next((ln.lstrip("# ").strip() for ln in lines if ln.startswith("# ")), "")
+
+  # Group lines into sections, breaking at every `##` heading.
+  sections: list[list[str]] = [[]]
+  for line in lines:
+    if line.startswith("## "):
+      sections.append([])
+    sections[-1].append(line)
+
+  chunks = []
+  for section in sections:
+    body = "\n".join(section).strip()
+    if not body:
+      continue
+    for piece in _split_paragraphs(body, target_words, overlap_words):
+      # A section that is only its own heading (e.g. a document whose H1 is followed straight
+      # away by an H2) carries no information — embedding it just adds noise to the search.
+      if len(piece.split()) < MIN_CHUNK_WORDS:
+        continue
+      # Don't repeat the title when the chunk already opens with it (the preamble section,
+      # whose first line is the `#` heading itself).
+      already_titled = title and piece.lstrip("# ").startswith(title)
+      chunks.append(piece if not title or already_titled else f"{title} — {piece}")
   return chunks
 
 
@@ -67,6 +109,32 @@ def read_file(path: Path):
   return None
 
 
+# Cohere's embed endpoint rate limits bulk ingests, and a rejected chunk means a silent hole in
+# the knowledge base. Pace the calls and retry with backoff rather than dropping the chunk.
+EMBED_DELAY_SECONDS = 0.5
+EMBED_MAX_ATTEMPTS = 5
+
+
+async def _embed_with_retry(text: str):
+  """Embed one chunk, retrying with exponential backoff. Returns the vector, or None."""
+  for attempt in range(EMBED_MAX_ATTEMPTS):
+    if attempt:
+      backoff = EMBED_DELAY_SECONDS * (2 ** attempt)
+      print(f"  rate limited, retrying in {backoff:.1f}s (attempt {attempt + 1}/{EMBED_MAX_ATTEMPTS})")
+      await asyncio.sleep(backoff)
+    try:
+      response = await generate_vector_embeddings(text, input_type="search_document")
+    except Exception as e:
+      # Transport failures surface as raised HTTPExceptions rather than a failed result, and
+      # they are just as retryable as a 429.
+      print(f"  embed call failed: {e}")
+      continue
+    if response.is_success:
+      await asyncio.sleep(EMBED_DELAY_SECONDS)
+      return response.data
+  return None
+
+
 async def ingest_folder(folder: str, category_override: str | None):
   root = Path(folder)
   files = sorted(p for p in root.rglob("*") if p.suffix.lower() in SUPPORTED_SUFFIXES)
@@ -83,6 +151,22 @@ async def ingest_folder(folder: str, category_override: str | None):
 
     category = category_override or f.stem
     source = str(f.relative_to(root))
+    chunks = chunk_text(text)
+
+    # Embed everything before touching the database. Pruning first and then failing partway
+    # through (a rate limit, a dropped connection) would leave the file half-represented in the
+    # knowledge base, so a file is only replaced once its full replacement is in hand.
+    embeddings = []
+    for chunk in chunks:
+      vector = await _embed_with_retry(chunk)
+      if vector is None:
+        break
+      embeddings.append(vector)
+
+    if len(embeddings) != len(chunks):
+      total_skipped += len(chunks)
+      print(f"{f.name}: embedding failed after retries — left unchanged ({len(chunks)} chunks skipped)")
+      continue
 
     # Prune chunks previously ingested from this file so edits and removals don't
     # leave stale vectors behind, then insert the current chunks fresh.
@@ -90,11 +174,10 @@ async def ingest_folder(folder: str, category_override: str | None):
     pruned = prune.data.get("deleted", 0) if prune.is_success else 0
     total_pruned += pruned
 
-    chunks = chunk_text(text)
     new = updated = 0
-    for chunk in chunks:
+    for chunk, vector in zip(chunks, embeddings):
       payload = Data_Embedding_Payload(text=chunk, category=category, source=source)
-      result = await insert_data_embeddings_document(payload)
+      result = await insert_data_embeddings_document(payload, embedding=vector)
       if not result.is_success:
         total_skipped += 1
         continue

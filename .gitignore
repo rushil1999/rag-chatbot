@@ -2,3 +2,6 @@
 virtual-env/
 __pycache__/
 *.pyc
+
+# One-off backup of the pre-corpus vectors, taken before they were replaced.
+legacy-vectors-backup.json

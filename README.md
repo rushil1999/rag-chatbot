@@ -1,6 +1,7 @@
 # rag-chatbot
 
-Vini — a Retrieval-Augmented Generation personal chatbot that answers questions about Rushil.
+Vini — a Retrieval-Augmented Generation personal chatbot that answers recruiter questions about
+Rushil. Powers the chat widget on the [portfolio](https://rushil1999.github.io/portfolio).
 
 [Medium write-up](https://medium.com/@rushil1999.dev/vini-a-retrieval-augmented-generation-personal-chatbot-7b90635b595e)
 
@@ -10,40 +11,65 @@ Vini — a Retrieval-Augmented Generation personal chatbot that answers question
 uvicorn app.main:app --reload
 ```
 
-Requires `MONGODB_URI`, `COHERE_EMBEDDING_API_KEY`, `GROK_API_KEY`, and `USER_TOKEN`
-(loaded from `app/.env` or the environment).
+Copy `.env.example` to `app/.env` and fill it in. Env vars are loaded from `app/.env` via
+`app/env.py` regardless of the working directory, and real environment variables always win (so
+container deploys can inject config directly).
 
-## Give Vini context about you
+Retrieval needs an Atlas Vector Search index named `vector_search` on the `data_embeddings`
+collection, indexing the `text_embeddings` field.
+
+## Vini's knowledge
 
 ### Core bio (always-on)
 
-`app/data/profile.md` is an editable markdown bio that is injected into **every** answer,
-so Vini stays on-persona even when vector search finds little. Edit it to describe who you are.
+`app/data/profile.md` is injected into **every** answer, so Vini stays on-persona even when
+vector search finds little. Keep it short — it costs tokens on every request.
 
-### Bulk-ingest notes
+### The corpus
 
-Drop a folder of `.md` / `.txt` (or `.pdf`) notes anywhere and load them all in one command:
+`content/` holds the version-controlled knowledge base — bio, one file per role, education,
+skills, projects, and a recruiter FAQ. It is the single source of truth: re-ingesting replaces
+what is in MongoDB, so edit the markdown, never the database.
 
 ```bash
-python -m scripts.ingest ./my-notes                 # category = each file's name
-python -m scripts.ingest ./my-notes --category bio  # override the category
+python -m scripts.ingest ./content
 ```
 
-The script chunks each file, embeds every chunk, and upserts it into MongoDB. Re-running is
-safe: before re-inserting a file, its previously-ingested chunks (matched by source path) are
-pruned, so edits and deletions never leave stale vectors behind. PDF support needs `pypdf`
-(already in `requirements.txt`).
+Chunking is heading-aware: each `##` section becomes its own chunk, prefixed with the document's
+`#` title so a chunk about "Autosweep" still says "Tesla". Ingestion is idempotent and atomic per
+file — every chunk is embedded first, and the file's old chunks are only pruned once the full
+replacement is in hand, so a rate limit can't leave a half-populated knowledge base.
 
-Note: the source path is relative to the folder you pass, so re-run from the same folder for
-pruning to match. Files you delete from disk aren't pruned automatically — remove them, or
-re-ingest the whole folder, to drop their chunks.
+Re-running is safe. Files you delete from disk aren't pruned automatically — remove them, or
+re-ingest the whole folder, to drop their chunks. Single facts can also be added via
+`POST /vector/` with `{ "text": "...", "category": "..." }` (admin token required).
 
-Single facts can still be added via `POST /vector/` with `{ "text": "...", "category": "..." }`.
+Guardrails live in the system prompt (`app/service/llm.py`): Vini never discusses compensation,
+notice period, work authorization, or reasons for leaving a role, never shares Rushil's phone
+number, and redirects off-topic or persona-override attempts.
 
-## Chat
+## API
 
-- `POST /chat/stream` — streaming (SSE) response; recommended.
-- `POST /chat/response` — non-streaming response.
+| Endpoint | Token | Purpose |
+|---|---|---|
+| `POST /chat/stream` | public | Streaming (SSE) response — what the site uses |
+| `POST /chat/response` | public | Non-streaming response |
+| `GET /test` | public | Health check; the site pings it to wake the service |
+| `POST /vector/`, `GET /vector/all`, `POST /vector/search/`, `GET /vector/embeddings/{input}` | admin | Knowledge-base management |
+| `POST /chat/`, `GET /chat/{session_id}` | admin | Transcript access |
 
-Both accept `{ "message_text": "...", "session_id": "...", "user_type": "user" }` and keep
-per-session memory, so follow-up questions stay in context.
+Chat endpoints accept `{ "message_text": "...", "session_id": "...", "user_type": "user" }` and
+keep per-session memory, so follow-up questions stay in context.
+
+`/chat/stream` emits `data: {"token": "..."}` frames, terminated by `data: [DONE]`; errors arrive
+as `data: {"error": "..."}`.
+
+### Auth
+
+Two tokens. `PUBLIC_TOKEN` ships inside the portfolio bundle — it is **not a secret**, so it only
+reaches the chat endpoints and is rate limited per client (20 requests / 10 min by default).
+`ADMIN_TOKEN` guards everything that writes to the knowledge base or reads transcripts, and must
+never appear in frontend code. `USER_TOKEN` is still accepted as the public token for backwards
+compatibility; drop it once the frontend ships a `PUBLIC_TOKEN`.
+
+CORS is an allowlist (`ALLOWED_ORIGINS`), defaulting to the portfolio origin and localhost.

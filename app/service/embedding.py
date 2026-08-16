@@ -1,13 +1,11 @@
+import app.env  # noqa: F401  (loads .env before anything reads os.getenv)
 import httpx
 
-from dotenv import load_dotenv
 from fastapi import HTTPException
 import os
 from app.service.logging import log_info, log_error
 from app.models.response_models import Service_Response_Model
 
-# Load environment variables from .env
-load_dotenv()
 
 # Reused async client keeps connections alive (avoids per-call TLS handshake)
 _async_client = httpx.AsyncClient(timeout=30.0)
@@ -17,7 +15,7 @@ def get_api_key():
     return os.getenv("COHERE_EMBEDDING_API_KEY")
 
 async def generate_vector_embeddings(input: str, input_type: str = "search_query"):
-    log_info("Received Input: {input}", input=input)
+    log_info("Embedding {length} chars as {input_type}", length=len(input), input_type=input_type)
     data = None
     try:
         key = get_api_key()
@@ -36,13 +34,27 @@ async def generate_vector_embeddings(input: str, input_type: str = "search_query
             "embedding_types": ["float"]
         }
         response = await _async_client.post(url, json=data, headers=headers)
-        log_info("Called Cohere API to generate vectos, data: {data}", data=data)
-        if response.status_code != httpx.codes.OK :
-            log_error("Error fetching data from Cohere API, status code: {status_code}", status_code=response.status_code )
+        if response.status_code != httpx.codes.OK:
+            # Bail out here — continuing would blow up on the missing "embeddings" key and
+            # surface as an opaque 500 instead of a handled failure.
+            log_error(
+                "Error fetching data from Cohere API, status code: {status_code}",
+                status_code=response.status_code,
+            )
+            return Service_Response_Model(
+                data=[],
+                is_success=False,
+                status_code=502,
+                message="Cannot fetch vector embeddings",
+            )
+
         embeddings_data = response.json()
-        if embeddings_data["embeddings"] == None or embeddings_data["embeddings"]["float"] == None or len(embeddings_data["embeddings"]["float"]) == 0:
+        floats = (embeddings_data.get("embeddings") or {}).get("float") or []
+        if len(floats) == 0:
+            log_error("Cohere API returned no embeddings")
             return Service_Response_Model(data=[], is_success=False, message="Cannot fetch vector embeddings")
-        return Service_Response_Model(data=embeddings_data["embeddings"]["float"][0], is_success=True)
+        log_info("Generated embedding of {dimensions} dimensions", dimensions=len(floats[0]))
+        return Service_Response_Model(data=floats[0], is_success=True)
     except Exception as e:
-        log_error("Error generating vector embedding document payload: {data}, due to {error}",data=data, error=str(e) )
-        raise HTTPException(status_code=500, detail=f"Error generating vector: {str(e)}")
+        log_error("Error generating vector embedding: {error}", error=str(e))
+        raise HTTPException(status_code=500, detail="Error generating vector embedding")

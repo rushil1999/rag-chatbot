@@ -1,7 +1,5 @@
 import asyncio
 import hashlib
-from dotenv import load_dotenv
-import os
 from fastapi import HTTPException
 from app.service.embedding import generate_vector_embeddings
 from app.service.vector_db import vector_db, cosine_similarity_threshold
@@ -10,10 +8,13 @@ from app.service.logging import log_info, log_error
 from app.models.response_models import Service_Response_Model
 
 
+# How many chunks to pull from vector search. Chunks are one markdown section each (~220 words),
+# so a single role or project spans several of them and a handful is needed to answer fully.
+RETRIEVAL_LIMIT = 8
 
 
 async def get_closest_data_embedding_document(message: str) -> str:
-  log_info("User Input Message received: {message}", message=message)
+  log_info("Vector search for query ({length} chars)", length=len(message))
   try:
     response = await generate_vector_embeddings(message)
     if not response.is_success:
@@ -21,13 +22,14 @@ async def get_closest_data_embedding_document(message: str) -> str:
 
     user_vector = response.data
     collection = vector_db['data_embeddings']
+    # $vectorSearch already returns results sorted by score, so no $sort stage is needed.
     pipeline = [
       {
           "$vectorSearch": {
               "queryVector": user_vector,
               "path": "text_embeddings",
               "numCandidates": 100,
-              "limit": 5,
+              "limit": RETRIEVAL_LIMIT,
               "index": "vector_search"
           }
       },
@@ -39,11 +41,6 @@ async def get_closest_data_embedding_document(message: str) -> str:
             'score': {
               '$meta': 'vectorSearchScore'
             }
-          }
-      },
-      {
-          "$sort": {
-              "score": -1  # Descending order
           }
       }
     ]
@@ -88,13 +85,18 @@ async def get_closest_data_embedding_document(message: str) -> str:
     raise HTTPException(status_code=500, detail=f"Error getting closest vector: {str(e)}")
 
 
-async def insert_data_embeddings_document(data_embedding_payload: Data_Embedding_Payload):
-  log_info("User Data received: {data_embedding_payload}", data_embedding_payload=data_embedding_payload)
+async def insert_data_embeddings_document(data_embedding_payload: Data_Embedding_Payload, embedding=None):
+  """Upsert one chunk. Pass `embedding` to reuse a vector that was generated earlier."""
+  log_info("Upserting chunk ({length} chars, category {category})",
+           length=len(data_embedding_payload.text), category=data_embedding_payload.category)
   try:
     text = data_embedding_payload.text
-    response = await generate_vector_embeddings(text, input_type="search_document")
-    if not response.is_success:
-      return response
+    if embedding is None:
+      response = await generate_vector_embeddings(text, input_type="search_document")
+      if not response.is_success:
+        return response
+    else:
+      response = Service_Response_Model(data=embedding, is_success=True)
     content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
     data_embedding = Data_Embedding(
       text=text,
@@ -117,7 +119,7 @@ async def insert_data_embeddings_document(data_embedding_payload: Data_Embedding
     log_info("Upserted data embedding (inserted={inserted}) for hash {hash}", inserted=inserted, hash=content_hash)
     return Service_Response_Model(data={"content_hash": content_hash, "inserted": inserted}, is_success=True)
   except Exception as e:
-    log_error("Error Inserting data embedding document payload: {data_embedding_payload}, due to {error}",data_embedding_payload=data_embedding_payload, error=str(e) )
+    log_error("Error inserting data embedding for source {source}: {error}", source=data_embedding_payload.source, error=str(e))
     raise HTTPException(status_code=500, detail=f"Error inserting item: {str(e)}")
 
 

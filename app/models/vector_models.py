@@ -15,6 +15,3 @@ class Data_Embedding(BaseModel):
     text_embeddings: List[float]
     source: Optional[str] = None
     content_hash: Optional[str] = None
-
-class User_Chat_Payload(BaseModel):
-    user_input: str
