@@ -13,6 +13,18 @@ from app.service.vector_search import get_closest_data_embedding_document
 
 NO_CONTEXT_MESSAGE = "I think I don't have enough data to answer this question. Maybe Rushil didn't ingest enough vectors in the search Database. Can you please contact him for this.😅 "
 
+# How many recent messages of a session to feed back into the LLM for continuity.
+RECENT_TURNS = 10
+
+
+def _recent_history(store_result):
+  """Extract the last RECENT_TURNS messages from a stored-chat response."""
+  try:
+    messages = store_result.data[0].get("messages", [])
+  except (IndexError, AttributeError, TypeError):
+    return []
+  return messages[-RECENT_TURNS:]
+
 
 async def store_chat_message(message_payload: Message_Payload):
   log_info("Received Chat Payload {message_payload}", message_payload=message_payload)
@@ -61,18 +73,22 @@ async def chat_response(message_payload: Message_Payload):
     if not store_result.is_success:
       return store_result
 
+    # A retrieval 404 just means no matching vectors — still answer from the
+    # always-on profile + conversation history. Only a real error short-circuits.
+    context = []
     if not response.is_success:
-      if response.status_code == 404:
-        bot_message_payload = Message_Payload(message_text=NO_CONTEXT_MESSAGE, session_id=session_id, user_type="bot")
-      else:
+      if response.status_code != 404:
         return response
     else:
-      # Generating response from LLM
-      llm_response = await generate_llm_response(user_input, response.data)
-      if not llm_response.is_success:
-        return llm_response
-      # Storing the LLM response
-      bot_message_payload = Message_Payload(message_text=llm_response.data.content, session_id=session_id, user_type="bot")
+      context = response.data
+
+    history = _recent_history(store_result)
+    llm_response = await generate_llm_response(user_input, context, history)
+    if not llm_response.is_success:
+      bot_text = NO_CONTEXT_MESSAGE
+    else:
+      bot_text = llm_response.data.content
+    bot_message_payload = Message_Payload(message_text=bot_text, session_id=session_id, user_type="bot")
     response = await store_chat_message(bot_message_payload)
     if not response.is_success:
       return response
@@ -101,18 +117,21 @@ async def chat_response_stream(message_payload: Message_Payload):
       yield f"data: {json.dumps({'error': store_result.message})}\n\n"
       return
 
-    full_text = ""
+    # A retrieval 404 just means no matching vectors — still answer from the
+    # always-on profile + conversation history. Only a real error short-circuits.
+    context = []
     if not response.is_success:
-      if response.status_code == 404:
-        full_text = NO_CONTEXT_MESSAGE
-        yield f"data: {json.dumps({'token': full_text})}\n\n"
-      else:
+      if response.status_code != 404:
         yield f"data: {json.dumps({'error': response.message})}\n\n"
         return
     else:
-      async for delta in generate_llm_response_stream(user_input, response.data):
-        full_text += delta
-        yield f"data: {json.dumps({'token': delta})}\n\n"
+      context = response.data
+
+    history = _recent_history(store_result)
+    full_text = ""
+    async for delta in generate_llm_response_stream(user_input, context, history):
+      full_text += delta
+      yield f"data: {json.dumps({'token': delta})}\n\n"
 
     # Persist the complete bot message after streaming finishes
     bot_message_payload = Message_Payload(message_text=full_text, session_id=session_id, user_type="bot")
